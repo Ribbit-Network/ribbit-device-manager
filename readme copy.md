@@ -1,4 +1,4 @@
-## Ribbit Device Manager
+## Ribbit Fleet Manager
 Current functionality is user and device associations. As this is an open source project, we gladly welcome any new developers to help us expand current functinoality. This app queries the Golioth REST APIs (reference docs available on their [website](https://docs.golioth.io/reference))
 
 ## Getting Started
