@@ -1,15 +1,19 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
+	gormsessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
 	"github.com/rosricard/ribbitDeviceManager/db"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 var (
@@ -84,7 +88,6 @@ func Signup(c *gin.Context) {
 		return
 	}
 
-	// After user creation
 	session := sessions.Default(c)
 	session.Set("email", creds.Email)
 	session.Set("lastActivity", time.Now())
@@ -116,7 +119,6 @@ func Signin(c *gin.Context) {
 		return
 	}
 
-	// After successful login
 	session := sessions.Default(c)
 	session.Set("email", creds.Email)
 	session.Set("lastActivity", time.Now())
@@ -217,9 +219,20 @@ func createDeviceNoDB(c *gin.Context) {
 }
 
 func SetupRouter() *gin.Engine {
+	dsn := os.Getenv("DSN_ENV")
+	if dsn == "" {
+		log.Fatal("DSN_ENV environment variable is not set")
+	}
+
+	dbconn, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("Failed to connect to the database:", err)
+	}
+
 	r := gin.Default()
-	// TODO: resolve session manager bug
-	// r.Use(sessions.Sessions("mysession", store))
+	store := gormsessions.NewStore(dbconn, true, []byte("secret"))
+	// var store = cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("ribbitUserSessionLogin", store))
 	// r.Use(sessionExpiryMiddleware)
 	r.POST("/signin/:email/:password", Signin)
 	r.POST("/signup/:email/:password", Signup)
