@@ -4,16 +4,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
-	gormsessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
 	"github.com/rosricard/ribbitDeviceManager/db"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 var (
@@ -102,6 +101,8 @@ func Signin(c *gin.Context) {
 		Password: c.Param("password"),
 	}
 
+	session := sessions.Default(c)
+
 	// Get the existing entry present in the database for the given username
 	user, err := db.GetUserByEmail(creds.Email)
 	if err != nil {
@@ -119,7 +120,6 @@ func Signin(c *gin.Context) {
 		return
 	}
 
-	session := sessions.Default(c)
 	session.Set("email", creds.Email)
 	session.Set("lastActivity", time.Now())
 	session.Save()
@@ -185,7 +185,7 @@ func createNewDevice(c *gin.Context) {
 		DeviceID:   d.DeviceId,
 		DeviceName: d.Name,
 		DevicePSK:  psk.PreSharedKey,
-		UserID:     user.ID,
+		UserEmail:  user.Email,
 		ProjectID:  d.ProjectID,
 		CreatedAt:  psk.CreatedAt,
 	}
@@ -197,7 +197,6 @@ func createNewDevice(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"deviceID": d.DeviceId, "psk": psk.PreSharedKey, "email": email})
-
 }
 
 // createDevice creates a new device in golioth and returns the device id and psk. Does not save to ribbit db
@@ -219,26 +218,40 @@ func createDeviceNoDB(c *gin.Context) {
 }
 
 func SetupRouter() *gin.Engine {
-	dsn := os.Getenv("DSN_ENV")
-	if dsn == "" {
-		log.Fatal("DSN_ENV environment variable is not set")
-	}
-
-	dbconn, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal("Failed to connect to the database:", err)
-	}
-
 	r := gin.Default()
-	store := gormsessions.NewStore(dbconn, true, []byte("secret"))
-	// var store = cookie.NewStore([]byte("secret"))
+	// Authentication middleware
+	//TODO: consider json web tokens for session management once more scale is requried
+	sessionKey := os.Getenv("RIBBIT_SESSION_KEY")
+	if sessionKey == "" {
+		log.Fatal("error: set RIBBIT_SESSION_KEY to a secret string and try again")
+	}
+	store := cookie.NewStore([]byte(sessionKey))
 	r.Use(sessions.Sessions("ribbitUserSessionLogin", store))
-	// r.Use(sessionExpiryMiddleware)
+
+	//UI
+	r.SetFuncMap(template.FuncMap{
+		"upper": strings.ToUpper,
+	})
+	r.Static("/assets", "./assets")
+	r.LoadHTMLGlob("ui/*.html")
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"content": "This is an index page...",
+		})
+	})
+	r.GET("/about", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "about.html", gin.H{
+			"content": "This is an about page...",
+		})
+	})
+
+	// Golioth API handlers
 	r.POST("/signin/:email/:password", Signin)
 	r.POST("/signup/:email/:password", Signup)
 	r.POST("/createNewDevice", createNewDevice)
 	r.DELETE("/users/:email", DeleteUser)
 	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
+
 	return r
 }
 

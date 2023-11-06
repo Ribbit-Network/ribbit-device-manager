@@ -11,7 +11,7 @@ type UserDB struct {
 	ID        string `gorm:"column:id;primary_key"`
 	Email     string `gorm:"column:email"`
 	CreatedAt time.Time
-	Password  string `gorm:"column:password"` //TODO hash password
+	Password  string `gorm:"column:password"`
 }
 
 type UserRepo struct {
