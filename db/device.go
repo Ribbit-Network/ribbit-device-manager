@@ -10,7 +10,7 @@ type DeviceDB struct {
 	DeviceID   string `gorm:"column:device_id;primary_key"`
 	DeviceName string `gorm:"column:device_name"`
 	DevicePSK  string `gorm:"column:device_psk"`
-	UserID     string `gorm:"column:user_id"`
+	UserEmail  string `gorm:"column:user_email"` // forgein key
 	ProjectID  string `gorm:"column:project_id"`
 	CreatedAt  time.Time
 }
