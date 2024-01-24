@@ -1,16 +1,12 @@
 package api
 
 import (
-	"log"
 	"net/http"
 	"os"
-	"strings"
-	"text/template"
 	"time"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/sessions"
 	"github.com/rosricard/ribbitDeviceManager/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,33 +31,28 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
-// Initialize the session store
-var store = cookie.NewStore([]byte("secret"))
+var (
+	store     = sessions.NewCookieStore([]byte("your-secret-key"))
+	loginUser = "username"
+	loginPass = "password"
+)
 
-func init() {
-	store.Options(sessions.Options{
-		MaxAge:   int(15 * 60), // 15 minutes in seconds
-		Path:     "/",
-		HttpOnly: true,
-	})
+// session manager
+func getSession(c *gin.Context) *sessions.Session {
+	session, _ := store.Get(c.Request, "session-name")
+	return session
 }
 
-func sessionExpiryMiddleware(c *gin.Context) {
-	session := sessions.Default(c)
-	lastActivity, found := session.Get("lastActivity").(time.Time)
+// handle home page
+func homeHandler(c *gin.Context) {
+	session := getSession(c)
 
-	if !found || time.Since(lastActivity) > 15*time.Minute {
-		session.Clear()
-		session.Save()
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
-		c.Abort()
+	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+		c.Redirect(http.StatusSeeOther, "/login")
 		return
 	}
 
-	// Update the last activity time
-	session.Set("lastActivity", time.Now())
-	session.Save()
-	c.Next()
+	c.HTML(http.StatusOK, "dashboard.html", nil)
 }
 
 func Signup(c *gin.Context) {
@@ -87,11 +78,17 @@ func Signup(c *gin.Context) {
 		return
 	}
 
-	session := sessions.Default(c)
-	session.Set("email", creds.Email)
-	session.Set("lastActivity", time.Now())
-	session.Save()
+	//TODO: make username and password dynamic
+	username := c.PostForm("username")
+	password := c.PostForm("password")
 
+	if username == loginUser && password == loginPass {
+		session := getSession(c)
+		session.Values["authenticated"] = true
+		session.Save(c.Request, c.Writer)
+		c.Redirect(http.StatusSeeOther, "/dashboard")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Signup successful"})
 }
 
@@ -101,7 +98,13 @@ func Signin(c *gin.Context) {
 		Password: c.Param("password"),
 	}
 
-	session := sessions.Default(c)
+	// TODO: move to end of the function
+	session := getSession(c)
+
+	if auth, ok := session.Values["authenticated"].(bool); ok && auth {
+		c.Redirect(http.StatusSeeOther, "/dashboard")
+		return
+	}
 
 	// Get the existing entry present in the database for the given username
 	user, err := db.GetUserByEmail(creds.Email)
@@ -120,11 +123,14 @@ func Signin(c *gin.Context) {
 		return
 	}
 
-	session.Set("email", creds.Email)
-	session.Set("lastActivity", time.Now())
-	session.Save()
-
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+}
+
+func logoutHandler(c *gin.Context) {
+	session := getSession(c)
+	session.Values["authenticated"] = false
+	session.Save(c.Request, c.Writer)
+	c.Redirect(http.StatusSeeOther, "/login")
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -148,19 +154,31 @@ func DeleteUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
-// createNewDevice adds a device to the active user account
-func createNewDevice(c *gin.Context) {
-	// Access the session
-	session := sessions.Default(c)
+func dashboardHandler(c *gin.Context) {
+	session := getSession(c)
 
-	// Retrieve the active user's email from the session
-	email, ok := session.Get("email").(string)
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user email not found in session"})
+	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+		c.Redirect(http.StatusSeeOther, "/login")
 		return
 	}
 
+	c.HTML(http.StatusOK, "dashboard.html", nil)
+}
+
+// createNewDevice adds a device to the active user account
+func createNewDevice(c *gin.Context) {
+	//TODO: retrieve email from session manager
+	// Access the session
+	//session := getSession(c)
+
+	// Retrieve the active user's email from the session
+	// if !ok {
+	// 	c.JSON(http.StatusNotFound, gin.H{"error": "user email not found in session"})
+	// 	return
+	// }
+
 	// Fetch the user details using the email from the session
+	email := "username"
 	user, err := db.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -219,35 +237,19 @@ func createDeviceNoDB(c *gin.Context) {
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
-	// Authentication middleware
-	//TODO: consider json web tokens for session management once more scale is requried
-	sessionKey := os.Getenv("RIBBIT_SESSION_KEY")
-	if sessionKey == "" {
-		log.Fatal("error: set RIBBIT_SESSION_KEY to a secret string and try again")
-	}
-	store := cookie.NewStore([]byte(sessionKey))
-	r.Use(sessions.Sessions("ribbitUserSessionLogin", store))
 
-	//UI
-	r.SetFuncMap(template.FuncMap{
-		"upper": strings.ToUpper,
-	})
-	r.Static("/assets", "./assets")
-	r.LoadHTMLGlob("ui/*.html")
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", gin.H{
-			"content": "This is an index page...",
-		})
-	})
-	r.GET("/about", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "about.html", gin.H{
-			"content": "This is an about page...",
-		})
-	})
+	// Front end handlers
+	r.LoadHTMLGlob("../templates/*")
+	r.Static("/static", "./static")
 
-	// Golioth API handlers
+	// Ribbit API handlers
+	r.GET("/", homeHandler)
+	r.GET("/logout", logoutHandler)
+	r.GET("/dashboard", dashboardHandler)
 	r.POST("/signin/:email/:password", Signin)
 	r.POST("/signup/:email/:password", Signup)
+
+	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
 	r.DELETE("/users/:email", DeleteUser)
 	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
