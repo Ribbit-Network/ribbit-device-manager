@@ -1,8 +1,11 @@
 package api
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,27 +35,21 @@ type Credentials struct {
 }
 
 var (
-	store     = sessions.NewCookieStore([]byte("your-secret-key"))
+	store     = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
+	cookie    *http.Cookie
 	loginUser = "username"
 	loginPass = "password"
 )
 
 // session manager
 func getSession(c *gin.Context) *sessions.Session {
-	session, _ := store.Get(c.Request, "session-name")
-	return session
-}
-
-// handle home page
-func homeHandler(c *gin.Context) {
-	session := getSession(c)
-
-	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-		c.Redirect(http.StatusSeeOther, "/login")
-		return
+	session, err := store.Get(c.Request, "session-name")
+	if err != nil {
+		fmt.Printf("Error : problem starting session -> %v\n", err.Error())
+		return nil
 	}
 
-	c.HTML(http.StatusOK, "dashboard.html", nil)
+	return session
 }
 
 func Signup(c *gin.Context) {
@@ -78,17 +75,6 @@ func Signup(c *gin.Context) {
 		return
 	}
 
-	//TODO: make username and password dynamic
-	username := c.PostForm("username")
-	password := c.PostForm("password")
-
-	if username == loginUser && password == loginPass {
-		session := getSession(c)
-		session.Values["authenticated"] = true
-		session.Save(c.Request, c.Writer)
-		c.Redirect(http.StatusSeeOther, "/dashboard")
-		return
-	}
 	c.JSON(http.StatusOK, gin.H{"message": "Signup successful"})
 }
 
@@ -98,13 +84,11 @@ func Signin(c *gin.Context) {
 		Password: c.Param("password"),
 	}
 
-	// TODO: move to end of the function
-	session := getSession(c)
+	// TODO: set cookie
+	// set cookie
+	// cookie, err := c.Cookie("logged-in")
 
-	if auth, ok := session.Values["authenticated"].(bool); ok && auth {
-		c.Redirect(http.StatusSeeOther, "/dashboard")
-		return
-	}
+	// no cookie
 
 	// Get the existing entry present in the database for the given username
 	user, err := db.GetUserByEmail(creds.Email)
@@ -126,11 +110,80 @@ func Signin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
-func logoutHandler(c *gin.Context) {
-	session := getSession(c)
-	session.Values["authenticated"] = false
-	session.Save(c.Request, c.Writer)
-	c.Redirect(http.StatusSeeOther, "/login")
+func Login(res http.ResponseWriter, req *http.Request) {
+	cookie, err := req.Cookie("logged-in")
+
+	// no cookie
+	if err == http.ErrNoCookie {
+		cookie = &http.Cookie{
+			Name:  "logged-in",
+			Value: "0",
+		}
+	}
+
+	// check log in: password entered = "secret"?
+	// TODO: Lookup actual user creds from storage
+	if req.Method == "POST" {
+		password := req.FormValue("password")
+		if password == "secret" {
+			cookie = &http.Cookie{
+				Name:  "logged-in",
+				Value: "1",
+			}
+		}
+	}
+
+	// if logout, then logout and destroy cookie
+	if req.URL.Path == "/logout" {
+		cookie = &http.Cookie{
+			Name:   "logged-in",
+			Value:  "0",
+			MaxAge: -1,
+		}
+	}
+
+	http.SetCookie(res, cookie)
+
+	// create string with html for response
+	var html string
+
+	// not logged in
+	if cookie.Value == strconv.Itoa(0) {
+		html = `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<title></title>
+		</head>
+		<body>
+		<form method="post" action="/">
+			<h3>User name</h3>
+			<input type="text" name="userName">
+			<h3>Password</h3>
+			<input type="text" name="password">
+			<br>
+			<input type="submit">
+			<input type="submit" name="logout" value="logout">
+		</form>
+		</body>
+		</html>`
+	}
+
+	// logged in
+	if cookie.Value == strconv.Itoa(1) {
+		html = `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<title></title>
+		</head>
+		<body>
+		,h1><a href="/logout">LOGOUT</a></h1>
+		</body>
+		</html>`
+	}
+
+	io.WriteString(res, html) // send data to client side
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -167,15 +220,7 @@ func dashboardHandler(c *gin.Context) {
 
 // createNewDevice adds a device to the active user account
 func createNewDevice(c *gin.Context) {
-	//TODO: retrieve email from session manager
-	// Access the session
-	//session := getSession(c)
-
-	// Retrieve the active user's email from the session
-	// if !ok {
-	// 	c.JSON(http.StatusNotFound, gin.H{"error": "user email not found in session"})
-	// 	return
-	// }
+	// TODO: retrieve active email
 
 	// Fetch the user details using the email from the session
 	email := "username"
@@ -238,13 +283,25 @@ func createDeviceNoDB(c *gin.Context) {
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
+	r.GET("/cookie", func(c *gin.Context) {
+
+		cookie, err := c.Cookie("gin_cookie")
+
+		if err != nil {
+			cookie = "NotSet"
+			c.SetCookie("gin_cookie", "test", 3600, "/", "localhost", false, true)
+		}
+
+		fmt.Printf("Cookie value: %s \n", cookie)
+	})
+
 	// Front end handlers
 	r.LoadHTMLGlob("../templates/*")
 	r.Static("/static", "./static")
 
 	// Ribbit API handlers
-	r.GET("/", homeHandler)
-	r.GET("/logout", logoutHandler)
+
+	http.HandleFunc("/login", Login)
 	r.GET("/dashboard", dashboardHandler)
 	r.POST("/signin/:email/:password", Signin)
 	r.POST("/signup/:email/:password", Signup)
