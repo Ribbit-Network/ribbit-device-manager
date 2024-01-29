@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/sessions"
 	"github.com/rosricard/ribbitDeviceManager/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -34,28 +33,45 @@ type Credentials struct {
 	Password string `json:"password"`
 }
 
-var (
-	store     = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
-	cookie    *http.Cookie
-	loginUser = "username"
-	loginPass = "password"
-)
-
-// session manager
-func getSession(c *gin.Context) *sessions.Session {
-	session, err := store.Get(c.Request, "session-name")
-	if err != nil {
-		fmt.Printf("Error : problem starting session -> %v\n", err.Error())
-		return nil
-	}
-
-	return session
-}
+// TODO: accept inputs from Go Templates
+// type Credentials struct {
+// 	Email    string `form:"email" binding:"required"`
+// 	Password string `form:"password" binding:"required"`
+// }
 
 func Signup(c *gin.Context) {
-	creds := &Credentials{
-		Email:    c.Param("email"),
-		Password: c.Param("password"),
+	var creds *Credentials
+
+	// TODO: implement Go Templates instead of embedded HTML
+	// Bind form data to the Credentials struct
+	// if err := c.Bind(&creds); err != nil {
+	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	// 	return
+	// }
+
+	if c.Request.Method == "POST" {
+		creds.Email = c.PostForm("email")
+		creds.Password = c.PostForm("password")
+		// Here you can perform validation or store the username and password as needed.
+		// For demonstration, let's just print them for now.
+		fmt.Printf("Received SignUp request. UserName: %s, Password: %s\n", creds.Email, creds.Password)
+
+		// Assuming validation is successful, render a new page to the user
+		html := `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<title>Sign Up Success</title>
+		</head>
+		<body>
+			<h2>Sign Up Success!</h2>
+			<p>Thank you for signing up, ` + creds.Email + `.</p>
+			<p><a href="/">Return to Login</a></p>
+		</body>
+		</html>`
+
+		io.WriteString(c.Writer, html)
+		return
 	}
 
 	hashedPasswordBytes, err := bcrypt.GenerateFromPassword([]byte(creds.Password), 8)
@@ -75,43 +91,60 @@ func Signup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Signup successful"})
-}
+	if c.Request.Method == "POST" {
+		creds.Email = c.PostForm("email")
+		creds.Password = c.PostForm("password")
 
-func Signin(c *gin.Context) {
-	creds := &Credentials{
-		Email:    c.Param("email"),
-		Password: c.Param("password"),
-	}
+		// Here you can perform validation or store the username and password as needed.
+		// For demonstration, let's just print them for now.
+		fmt.Printf("Received SignUp request. Email: %s, Password: %s\n", creds.Email, creds.Password)
 
-	// TODO: set cookie
-	// set cookie
-	// cookie, err := c.Cookie("logged-in")
+		// Assuming validation is successful, render a new page to the user
+		html := `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<title>Sign Up Success</title>
+		</head>
+		<body>
+			<h2>Sign Up Success!</h2>
+			<p>Thank you for signing up, ` + creds.Email + `.</p>
+			<p><a href="/">Return to Login</a></p>
+		</body>
+		</html>`
 
-	// no cookie
-
-	// Get the existing entry present in the database for the given username
-	user, err := db.GetUserByEmail(creds.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		io.WriteString(c.Writer, html)
 		return
 	}
 
-	storedCreds := &Credentials{
-		Password: user.Password,
-		Email:    user.Email,
-	}
+	// If not a POST request or form not submitted yet, render the sign-up form
+	html := `<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title>Sign Up</title>
+	</head>
+	<body>
+	<form method="post" action="/signup">
+		<h2>Sign Up</h2>
+		<h3>email</h3>
+		<input type="text" name="email">
+		<h3>Password</h3>
+		<input type="password" name="password"> <!-- Use type="password" for passwords -->
+		<br>
+		<input type="submit" value="Sign Up">
+	</form>
+	</body>
+	</html>`
 
-	if err = bcrypt.CompareHashAndPassword([]byte(storedCreds.Password), []byte(creds.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
+	io.WriteString(c.Writer, html)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+	// Render a success message or redirect to another page
+	c.HTML(http.StatusOK, "signup.html", gin.H{"message": "User signed up successfully"})
 }
 
-func Login(res http.ResponseWriter, req *http.Request) {
-	cookie, err := req.Cookie("logged-in")
+func Login(c *gin.Context) {
+	cookie, err := c.Request.Cookie("logged-in")
 
 	// no cookie
 	if err == http.ErrNoCookie {
@@ -121,11 +154,33 @@ func Login(res http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// check log in: password entered = "secret"?
-	// TODO: Lookup actual user creds from storage
-	if req.Method == "POST" {
-		password := req.FormValue("password")
-		if password == "secret" {
+	// check log in: password entered matches what's in the db?
+	if c.Request.Method == "POST" {
+
+		// get user inputs from front end
+		creds := &Credentials{
+			Email:    c.PostForm("email"),
+			Password: c.PostForm("password"),
+		}
+
+		// Get the existing entry present in the database for the given email
+		user, err := db.GetUserByEmail(creds.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		storedCreds := &Credentials{
+			Password: user.Password,
+			Email:    user.Email,
+		}
+
+		if err = bcrypt.CompareHashAndPassword([]byte(storedCreds.Password), []byte(creds.Password)); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+
+		if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
 			cookie = &http.Cookie{
 				Name:  "logged-in",
 				Value: "1",
@@ -134,7 +189,7 @@ func Login(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// if logout, then logout and destroy cookie
-	if req.URL.Path == "/logout" {
+	if c.Request.URL.Path == "/logout" {
 		cookie = &http.Cookie{
 			Name:   "logged-in",
 			Value:  "0",
@@ -142,7 +197,7 @@ func Login(res http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	http.SetCookie(res, cookie)
+	http.SetCookie(c.Writer, cookie)
 
 	// create string with html for response
 	var html string
@@ -158,7 +213,7 @@ func Login(res http.ResponseWriter, req *http.Request) {
 		<body>
 		<form method="post" action="/">
 			<h3>User name</h3>
-			<input type="text" name="userName">
+			<input type="text" name="email">
 			<h3>Password</h3>
 			<input type="text" name="password">
 			<br>
@@ -178,12 +233,12 @@ func Login(res http.ResponseWriter, req *http.Request) {
 			<title></title>
 		</head>
 		<body>
-		,h1><a href="/logout">LOGOUT</a></h1>
+		<h1><a href="/logout">LOGOUT</a></h1>
 		</body>
 		</html>`
 	}
 
-	io.WriteString(res, html) // send data to client side
+	io.WriteString(c.Writer, html) // send data to the client side
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -205,17 +260,6 @@ func DeleteUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
-}
-
-func dashboardHandler(c *gin.Context) {
-	session := getSession(c)
-
-	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-		c.Redirect(http.StatusSeeOther, "/login")
-		return
-	}
-
-	c.HTML(http.StatusOK, "dashboard.html", nil)
 }
 
 // createNewDevice adds a device to the active user account
@@ -283,28 +327,16 @@ func createDeviceNoDB(c *gin.Context) {
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
-	r.GET("/cookie", func(c *gin.Context) {
-
-		cookie, err := c.Cookie("gin_cookie")
-
-		if err != nil {
-			cookie = "NotSet"
-			c.SetCookie("gin_cookie", "test", 3600, "/", "localhost", false, true)
-		}
-
-		fmt.Printf("Cookie value: %s \n", cookie)
-	})
-
 	// Front end handlers
 	r.LoadHTMLGlob("../templates/*")
 	r.Static("/static", "./static")
 
 	// Ribbit API handlers
-
-	http.HandleFunc("/login", Login)
-	r.GET("/dashboard", dashboardHandler)
-	r.POST("/signin/:email/:password", Signin)
-	r.POST("/signup/:email/:password", Signup)
+	r.GET("/login", Login)
+	r.POST("/login", Login)
+	r.GET("/logout", Login)
+	r.GET("/signup", Signup)
+	r.POST("/signup", Signup)
 
 	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
