@@ -51,6 +51,6 @@ The APIs available are listed below and can be accessed by using a separate API 
     * It creates a device directly in the golioth account without associating it to a user
 
 ## OPEN ITEMS
-* fix but where cookie occasionally doesn't update
+* fix bug where cookie occasionally doesn't update to a value of 1 so that the user login data is tracked in the browser (required for email association on device creation)
 * add `ADD DEVICE` button to the `loggedin.html` page
 * server user a list of golioth devices associated to their user account and present on the UI on the `loggedin.html` page
