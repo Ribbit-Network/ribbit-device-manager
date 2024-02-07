@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -29,48 +28,16 @@ type Device struct {
 }
 
 type Credentials struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `form:"email" binding:"required"`
+	Password string `form:"password" binding:"required"`
 }
-
-// TODO: accept inputs from Go Templates
-// type Credentials struct {
-// 	Email    string `form:"email" binding:"required"`
-// 	Password string `form:"password" binding:"required"`
-// }
 
 func Signup(c *gin.Context) {
 	var creds *Credentials
 
-	// TODO: implement Go Templates instead of embedded HTML
-	// Bind form data to the Credentials struct
-	// if err := c.Bind(&creds); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	// 	return
-	// }
-
-	if c.Request.Method == "POST" {
-		creds.Email = c.PostForm("email")
-		creds.Password = c.PostForm("password")
-		// Here you can perform validation or store the username and password as needed.
-		// For demonstration, let's just print them for now.
-		fmt.Printf("Received SignUp request. UserName: %s, Password: %s\n", creds.Email, creds.Password)
-
-		// Assuming validation is successful, render a new page to the user
-		html := `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title>Sign Up Success</title>
-		</head>
-		<body>
-			<h2>Sign Up Success!</h2>
-			<p>Thank you for signing up, ` + creds.Email + `.</p>
-			<p><a href="/">Return to Login</a></p>
-		</body>
-		</html>`
-
-		io.WriteString(c.Writer, html)
+	// Bind the form data to the user struct
+	if err := c.Bind(&creds); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -81,12 +48,12 @@ func Signup(c *gin.Context) {
 	}
 	hashedPassword := string(hashedPasswordBytes)
 
-	user := db.User{
+	userdb := db.User{
 		Email:    creds.Email,
 		Password: hashedPassword,
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if err := db.CreateUser(userdb); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -94,10 +61,6 @@ func Signup(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		creds.Email = c.PostForm("email")
 		creds.Password = c.PostForm("password")
-
-		// Here you can perform validation or store the username and password as needed.
-		// For demonstration, let's just print them for now.
-		fmt.Printf("Received SignUp request. Email: %s, Password: %s\n", creds.Email, creds.Password)
 
 		// Assuming validation is successful, render a new page to the user
 		html := `<!DOCTYPE html>
@@ -335,8 +298,11 @@ func SetupRouter() *gin.Engine {
 	r.GET("/login", Login)
 	r.POST("/login", Login)
 	r.GET("/logout", Login)
-	r.GET("/signup", Signup)
 	r.POST("/signup", Signup)
+
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "signup.html", nil)
+	})
 
 	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
