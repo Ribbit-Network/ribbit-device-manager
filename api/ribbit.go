@@ -32,7 +32,7 @@ type Credentials struct {
 	Password string `form:"password" binding:"required"`
 }
 
-func Signup(c *gin.Context) {
+func signup(c *gin.Context) {
 	var creds *Credentials
 
 	// Bind the form data to the user struct
@@ -63,6 +63,7 @@ func Signup(c *gin.Context) {
 		creds.Password = c.PostForm("password")
 
 		// Assuming validation is successful, render a new page to the user
+		// TODO: move the html to a file under templates
 		html := `<!DOCTYPE html>
 		<html lang="en">
 		<head>
@@ -81,32 +82,15 @@ func Signup(c *gin.Context) {
 	}
 
 	// If not a POST request or form not submitted yet, render the sign-up form
-	html := `<!DOCTYPE html>
-	<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<title>Sign Up</title>
-	</head>
-	<body>
-	<form method="post" action="/signup">
-		<h2>Sign Up</h2>
-		<h3>email</h3>
-		<input type="text" name="email">
-		<h3>Password</h3>
-		<input type="password" name="password"> <!-- Use type="password" for passwords -->
-		<br>
-		<input type="submit" value="Sign Up">
-	</form>
-	</body>
-	</html>`
-
-	io.WriteString(c.Writer, html)
+	c.HTML(http.StatusOK, "signup.html", nil)
 
 	// Render a success message or redirect to another page
 	c.HTML(http.StatusOK, "signup.html", gin.H{"message": "User signed up successfully"})
 }
 
-func Login(c *gin.Context) {
+// login to the app
+func login(c *gin.Context) {
+	// use cookies to track if user is logged in. This is required by the app for user device association
 	cookie, err := c.Request.Cookie("logged-in")
 
 	// no cookie
@@ -165,49 +149,23 @@ func Login(c *gin.Context) {
 
 	http.SetCookie(c.Writer, cookie)
 
-	// create string with html for response
-	var html string
-
 	// not logged in
 	if cookie.Value == strconv.Itoa(0) {
-		html = `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title></title>
-		</head>
-		<body>
-		<form method="post" action="/">
-			<h3>User name</h3>
-			<input type="text" name="email">
-			<h3>Password</h3>
-			<input type="text" name="password">
-			<br>
-			<input type="submit">
-			<input type="submit" name="logout" value="logout">
-		</form>
-		</body>
-		</html>`
+		c.HTML(http.StatusOK, "login.html", nil)
+		//TODO: serve error to the user about why login failed
+		return
 	}
 
 	// logged in
 	if cookie.Value == strconv.Itoa(1) {
-		html = `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title></title>
-		</head>
-		<body>
-		<h1><a href="/logout">LOGOUT</a></h1>
-		</body>
-		</html>`
+		c.HTML(http.StatusOK, "loggedin.html", nil)
+		return
 	}
 
-	io.WriteString(c.Writer, html) // send data to the client side
 }
 
-func GetAllUsers(c *gin.Context) {
+// getAllUsers from db
+func getAllUsers(c *gin.Context) {
 	users, err := db.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -217,20 +175,21 @@ func GetAllUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-func DeleteUser(c *gin.Context) {
+// deleteUser from db
+func deleteUser(c *gin.Context) {
 	email := c.Param("email")
 
 	if err := db.DeleteUserByEmail(email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
+	// TODO: what happens to the devices associated with the user?
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
 // createNewDevice adds a device to the active user account
 func createNewDevice(c *gin.Context) {
-	// TODO: retrieve active email
+	// TODO: retrieve active email from cookie store
 
 	// Fetch the user details using the email from the session
 	email := "username"
@@ -304,16 +263,17 @@ func SetupRouter() *gin.Engine {
 	r.GET("/login", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "login.html", nil)
 	})
-	r.POST("/login", Login)
-	r.GET("/logout", Login)
-	r.POST("/signup", Signup)
+	r.POST("/login", login)
+	r.GET("/logout", login)
+	r.POST("/signup", signup)
+	r.DELETE("/users/:email", deleteUser)
 
 	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
-	r.DELETE("/users/:email", DeleteUser)
 	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
 
 	return r
 }
 
-// TODO: on app startup, run a check against the golioth API to get all devices and compare against the database
+// TODO: on app startup, run a check against the golioth API to get all devices within a given project
+// and compare against the database to ensure that the database is up to date with the golioth data
