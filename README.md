@@ -49,3 +49,8 @@ The APIs available are listed below and can be accessed by using a separate API 
 * `POST /createNewDevice` : creates a device in the golioth system and associates it with the specified user email
 * For developer testing only: `POST /createDeviceGolioth`
     * It creates a device directly in the golioth account without associating it to a user
+
+## OPEN ITEMS
+* fix but where cookie occasionally doesn't update
+* add `ADD DEVICE` button to the `loggedin.html` page
+* server user a list of golioth devices associated to their user account and present on the UI on the `loggedin.html` page
