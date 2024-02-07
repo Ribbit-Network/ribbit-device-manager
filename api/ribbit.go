@@ -1,12 +1,12 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/rosricard/ribbitDeviceManager/db"
 	"golang.org/x/crypto/bcrypt"
@@ -28,43 +28,17 @@ type Device struct {
 }
 
 type Credentials struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `form:"email" binding:"required"`
+	Password string `form:"password" binding:"required"`
 }
 
-// Initialize the session store
-var store = cookie.NewStore([]byte("secret"))
+func signup(c *gin.Context) {
+	var creds *Credentials
 
-func init() {
-	store.Options(sessions.Options{
-		MaxAge:   int(15 * 60), // 15 minutes in seconds
-		Path:     "/",
-		HttpOnly: true,
-	})
-}
-
-func sessionExpiryMiddleware(c *gin.Context) {
-	session := sessions.Default(c)
-	lastActivity, found := session.Get("lastActivity").(time.Time)
-
-	if !found || time.Since(lastActivity) > 15*time.Minute {
-		session.Clear()
-		session.Save()
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
-		c.Abort()
+	// Bind the form data to the user struct
+	if err := c.Bind(&creds); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
-	}
-
-	// Update the last activity time
-	session.Set("lastActivity", time.Now())
-	session.Save()
-	c.Next()
-}
-
-func Signup(c *gin.Context) {
-	creds := &Credentials{
-		Email:    c.Param("email"),
-		Password: c.Param("password"),
 	}
 
 	hashedPasswordBytes, err := bcrypt.GenerateFromPassword([]byte(creds.Password), 8)
@@ -74,58 +48,124 @@ func Signup(c *gin.Context) {
 	}
 	hashedPassword := string(hashedPasswordBytes)
 
-	user := db.User{
+	userdb := db.User{
 		Email:    creds.Email,
 		Password: hashedPassword,
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if err := db.CreateUser(userdb); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// After user creation
-	session := sessions.Default(c)
-	session.Set("email", creds.Email)
-	session.Set("lastActivity", time.Now())
-	session.Save()
+	if c.Request.Method == "POST" {
+		creds.Email = c.PostForm("email")
+		creds.Password = c.PostForm("password")
 
-	c.JSON(http.StatusOK, gin.H{"message": "Signup successful"})
-}
+		// Assuming validation is successful, render a new page to the user
+		// TODO: move the html to a file under templates
+		html := `<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<title>Sign Up Success</title>
+		</head>
+		<body>
+			<h2>Sign Up Success!</h2>
+			<p>Thank you for signing up, ` + creds.Email + `.</p>
+			<p><a href="/">Return to Login</a></p>
+		</body>
+		</html>`
 
-func Signin(c *gin.Context) {
-	creds := &Credentials{
-		Email:    c.Param("email"),
-		Password: c.Param("password"),
-	}
-
-	// Get the existing entry present in the database for the given username
-	user, err := db.GetUserByEmail(creds.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		io.WriteString(c.Writer, html)
 		return
 	}
 
-	storedCreds := &Credentials{
-		Password: user.Password,
-		Email:    user.Email,
+	// If not a POST request or form not submitted yet, render the sign-up form
+	c.HTML(http.StatusOK, "signup.html", nil)
+
+	// Render a success message or redirect to another page
+	c.HTML(http.StatusOK, "signup.html", gin.H{"message": "User signed up successfully"})
+}
+
+// login to the app
+func login(c *gin.Context) {
+	// use cookies to track if user is logged in. This is required by the app for user device association
+	cookie, err := c.Request.Cookie("logged-in")
+
+	// no cookie
+	if err == http.ErrNoCookie {
+		cookie = &http.Cookie{
+			Name:  "logged-in",
+			Value: "0",
+		}
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(storedCreds.Password), []byte(creds.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+	// check log in: password entered matches what's in the db?
+	if c.Request.Method == "POST" {
+
+		// get user inputs from front end
+		creds := &Credentials{
+			Email:    c.PostForm("email"),
+			Password: c.PostForm("password"),
+		}
+
+		// Get the existing entry present in the database for the given email
+		user, err := db.GetUserByEmail(creds.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		storedCreds := &Credentials{
+			Password: user.Password,
+			Email:    user.Email,
+		}
+
+		if err = bcrypt.CompareHashAndPassword([]byte(storedCreds.Password), []byte(creds.Password)); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+
+		// set cookie to 1 if user creds match and show that the user is logged in
+		if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
+			cookie = &http.Cookie{
+				Name:  "logged-in",
+				Value: "1",
+			}
+			//TODO: direct to page showing that user successfully logged in
+		}
+	}
+
+	// Once logged in, redirect to the home page if user logs out
+	if c.Request.URL.Path == "/logout" {
+		cookie = &http.Cookie{
+			Name:   "logged-in",
+			Value:  "0",
+			MaxAge: -1,
+		}
+		// TODO: direct to page showing that user successfully logged out
+	}
+
+	http.SetCookie(c.Writer, cookie)
+
+	// not logged in
+	if cookie.Value == strconv.Itoa(0) {
+		c.HTML(http.StatusOK, "login.html", nil)
+		//TODO: serve error to the user about why login failed
 		return
 	}
 
-	// After successful login
-	session := sessions.Default(c)
-	session.Set("email", creds.Email)
-	session.Set("lastActivity", time.Now())
-	session.Save()
+	// logged in
+	if cookie.Value == strconv.Itoa(1) {
+		c.HTML(http.StatusOK, "loggedin.html", nil)
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
-func GetAllUsers(c *gin.Context) {
+// getAllUsers from db
+func getAllUsers(c *gin.Context) {
 	users, err := db.GetAllUsers()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -135,30 +175,24 @@ func GetAllUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-func DeleteUser(c *gin.Context) {
+// deleteUser from db
+func deleteUser(c *gin.Context) {
 	email := c.Param("email")
 
 	if err := db.DeleteUserByEmail(email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
+	// TODO: what happens to the devices associated with the user?
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
 // createNewDevice adds a device to the active user account
 func createNewDevice(c *gin.Context) {
-	// Access the session
-	session := sessions.Default(c)
-
-	// Retrieve the active user's email from the session
-	email, ok := session.Get("email").(string)
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user email not found in session"})
-		return
-	}
+	// TODO: retrieve active email from cookie store
 
 	// Fetch the user details using the email from the session
+	email := "username"
 	user, err := db.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -183,7 +217,7 @@ func createNewDevice(c *gin.Context) {
 		DeviceID:   d.DeviceId,
 		DeviceName: d.Name,
 		DevicePSK:  psk.PreSharedKey,
-		UserID:     user.ID,
+		UserEmail:  user.Email,
 		ProjectID:  d.ProjectID,
 		CreatedAt:  psk.CreatedAt,
 	}
@@ -195,7 +229,6 @@ func createNewDevice(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"deviceID": d.DeviceId, "psk": psk.PreSharedKey, "email": email})
-
 }
 
 // createDevice creates a new device in golioth and returns the device id and psk. Does not save to ribbit db
@@ -218,15 +251,29 @@ func createDeviceNoDB(c *gin.Context) {
 
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
-	// TODO: resolve session manager bug
-	// r.Use(sessions.Sessions("mysession", store))
-	// r.Use(sessionExpiryMiddleware)
-	r.POST("/signin/:email/:password", Signin)
-	r.POST("/signup/:email/:password", Signup)
+
+	// Front end handlers
+	r.LoadHTMLGlob("../templates/*")
+	r.Static("/static", "./static")
+
+	// Ribbit API handlers
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "signup.html", nil)
+	})
+	r.GET("/login", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "login.html", nil)
+	})
+	r.POST("/login", login)
+	r.GET("/logout", login)
+	r.POST("/signup", signup)
+	r.DELETE("/users/:email", deleteUser)
+
+	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
-	r.DELETE("/users/:email", DeleteUser)
 	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
+
 	return r
 }
 
-// TODO: on app startup, run a check against the golioth API to get all devices and compare against the database
+// TODO: on app startup, run a check against the golioth API to get all devices within a given project
+// and compare against the database to ensure that the database is up to date with the golioth data
