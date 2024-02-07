@@ -143,21 +143,24 @@ func Login(c *gin.Context) {
 			return
 		}
 
+		// set cookie to 1 if user creds match and show that the user is logged in
 		if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
 			cookie = &http.Cookie{
 				Name:  "logged-in",
 				Value: "1",
 			}
+			//TODO: direct to page showing that user successfully logged in
 		}
 	}
 
-	// if logout, then logout and destroy cookie
+	// Once logged in, redirect to the home page if user logs out
 	if c.Request.URL.Path == "/logout" {
 		cookie = &http.Cookie{
 			Name:   "logged-in",
 			Value:  "0",
 			MaxAge: -1,
 		}
+		// TODO: direct to page showing that user successfully logged out
 	}
 
 	http.SetCookie(c.Writer, cookie)
@@ -295,14 +298,15 @@ func SetupRouter() *gin.Engine {
 	r.Static("/static", "./static")
 
 	// Ribbit API handlers
-	r.GET("/login", Login)
-	r.POST("/login", Login)
-	r.GET("/logout", Login)
-	r.POST("/signup", Signup)
-
 	r.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "signup.html", nil)
 	})
+	r.GET("/login", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "login.html", nil)
+	})
+	r.POST("/login", Login)
+	r.GET("/logout", Login)
+	r.POST("/signup", Signup)
 
 	// Golioth API handlers
 	r.POST("/createNewDevice", createNewDevice)
