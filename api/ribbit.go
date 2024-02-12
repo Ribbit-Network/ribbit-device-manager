@@ -3,7 +3,6 @@ package api
 import (
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -76,13 +75,13 @@ func signup(c *gin.Context) {
 // login to the app
 func login(c *gin.Context) {
 	// use cookies to track if user is logged in. This is required by the app for user device association
-	cookie, err := c.Request.Cookie("logged-in")
+	cookie, err := c.Request.Cookie("email")
 
 	// no cookie
 	if err == http.ErrNoCookie {
 		cookie = &http.Cookie{
-			Name:  "logged-in",
-			Value: "0",
+			Name:  "email",
+			Value: "",
 		}
 	}
 
@@ -117,8 +116,8 @@ func login(c *gin.Context) {
 		// TODO : fix password comparison
 		if creds.Email == storedCreds.Email {
 			cookie = &http.Cookie{
-				Name:  "logged-in",
-				Value: "1",
+				Name:  "email",
+				Value: storedCreds.Email,
 			}
 			//TODO: direct to page showing that user successfully logged in
 		}
@@ -127,8 +126,8 @@ func login(c *gin.Context) {
 	// Once logged in, redirect to the home page if user logs out
 	if c.Request.URL.Path == "/logout" {
 		cookie = &http.Cookie{
-			Name:   "logged-in",
-			Value:  "0",
+			Name:   "email",
+			Value:  "",
 			MaxAge: -1,
 		}
 		// TODO: direct to page showing that user successfully logged out
@@ -137,17 +136,14 @@ func login(c *gin.Context) {
 	http.SetCookie(c.Writer, cookie)
 
 	// not logged in
-	if cookie.Value == strconv.Itoa(0) {
+	if cookie.Value == "" {
 		c.HTML(http.StatusOK, "login.html", nil)
-		//TODO: serve error to the user about why login failed
+		// TODO: Serve error to the user about why login failed
 		return
 	}
 
-	// logged in
-	if cookie.Value == strconv.Itoa(1) {
-		c.HTML(http.StatusOK, "loggedin.html", nil)
-		return
-	}
+	// If logged in, serve the logged-in page
+	c.HTML(http.StatusOK, "loggedin.html", gin.H{"email": cookie.Value})
 
 }
 
@@ -178,9 +174,24 @@ func deleteUser(c *gin.Context) {
 func createNewDevice(c *gin.Context) {
 	// TODO: retrieve active email from cookie store
 	// email := c.Request.Cookies
+	// Retrieve the email cookie
+	cookie, err := c.Request.Cookie("email")
 
 	// Fetch the user details using the email from the session
-	email := "username"
+	if err != nil {
+		// Handle error if cookie not found or other errors
+		if err == http.ErrNoCookie {
+			c.String(http.StatusNotFound, "No email cookie found")
+			return
+		}
+		// Handle other errors
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Retrieve the value (email) from the cookie
+	email := cookie.Value
+
 	user, err := db.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
