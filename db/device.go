@@ -15,13 +15,6 @@ type DeviceDB struct {
 	CreatedAt  time.Time
 }
 
-type Device struct {
-	GoliothPSKID string
-	GoliothPSK   string
-	UserID       string
-	ProjectID    string
-	CreatedAt    string
-}
 type DeviceRepo struct {
 	db *gorm.DB
 }

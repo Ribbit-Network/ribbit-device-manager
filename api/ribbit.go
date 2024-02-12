@@ -1,10 +1,8 @@
 package api
 
 import (
-	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +50,7 @@ func signup(c *gin.Context) {
 		Email:    creds.Email,
 		Password: hashedPassword,
 	}
-
+	// TODO: check if user already exists in db, if user exists, return message and suggest user login
 	if err := db.CreateUser(userdb); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -61,23 +59,9 @@ func signup(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		creds.Email = c.PostForm("email")
 		creds.Password = c.PostForm("password")
-
 		// Assuming validation is successful, render a new page to the user
-		// TODO: move the html to a file under templates
-		html := `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title>Sign Up Success</title>
-		</head>
-		<body>
-			<h2>Sign Up Success!</h2>
-			<p>Thank you for signing up, ` + creds.Email + `.</p>
-			<p><a href="/">Return to Login</a></p>
-		</body>
-		</html>`
+		c.HTML(http.StatusOK, "signupSuccess.html", nil)
 
-		io.WriteString(c.Writer, html)
 		return
 	}
 
@@ -91,13 +75,13 @@ func signup(c *gin.Context) {
 // login to the app
 func login(c *gin.Context) {
 	// use cookies to track if user is logged in. This is required by the app for user device association
-	cookie, err := c.Request.Cookie("logged-in")
+	cookie, err := c.Request.Cookie("email")
 
 	// no cookie
 	if err == http.ErrNoCookie {
 		cookie = &http.Cookie{
-			Name:  "logged-in",
-			Value: "0",
+			Name:  "email",
+			Value: "",
 		}
 	}
 
@@ -128,10 +112,12 @@ func login(c *gin.Context) {
 		}
 
 		// set cookie to 1 if user creds match and show that the user is logged in
-		if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
+		// if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
+		// TODO : fix password comparison
+		if creds.Email == storedCreds.Email {
 			cookie = &http.Cookie{
-				Name:  "logged-in",
-				Value: "1",
+				Name:  "email",
+				Value: storedCreds.Email,
 			}
 			//TODO: direct to page showing that user successfully logged in
 		}
@@ -140,8 +126,8 @@ func login(c *gin.Context) {
 	// Once logged in, redirect to the home page if user logs out
 	if c.Request.URL.Path == "/logout" {
 		cookie = &http.Cookie{
-			Name:   "logged-in",
-			Value:  "0",
+			Name:   "email",
+			Value:  "",
 			MaxAge: -1,
 		}
 		// TODO: direct to page showing that user successfully logged out
@@ -150,17 +136,14 @@ func login(c *gin.Context) {
 	http.SetCookie(c.Writer, cookie)
 
 	// not logged in
-	if cookie.Value == strconv.Itoa(0) {
+	if cookie.Value == "" {
 		c.HTML(http.StatusOK, "login.html", nil)
-		//TODO: serve error to the user about why login failed
+		// TODO: Serve error to the user about why login failed
 		return
 	}
 
-	// logged in
-	if cookie.Value == strconv.Itoa(1) {
-		c.HTML(http.StatusOK, "loggedin.html", nil)
-		return
-	}
+	// If logged in, serve the logged-in page
+	c.HTML(http.StatusOK, "loggedin.html", gin.H{"email": cookie.Value})
 
 }
 
@@ -190,9 +173,25 @@ func deleteUser(c *gin.Context) {
 // createNewDevice adds a device to the active user account
 func createNewDevice(c *gin.Context) {
 	// TODO: retrieve active email from cookie store
+	// email := c.Request.Cookies
+	// Retrieve the email cookie
+	cookie, err := c.Request.Cookie("email")
 
 	// Fetch the user details using the email from the session
-	email := "username"
+	if err != nil {
+		// Handle error if cookie not found or other errors
+		if err == http.ErrNoCookie {
+			c.String(http.StatusNotFound, "No email cookie found")
+			return
+		}
+		// Handle other errors
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Retrieve the value (email) from the cookie
+	email := cookie.Value
+
 	user, err := db.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -224,11 +223,16 @@ func createNewDevice(c *gin.Context) {
 
 	err1 := db.CreateDevice(device)
 	if err1 != nil {
+		//TODO: fix internal server error reporting to the UI. This currently just shows that the webpage doesn't work
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// publish device id and psk to the user
 	c.JSON(http.StatusOK, gin.H{"deviceID": d.DeviceId, "psk": psk.PreSharedKey, "email": email})
+	// if devices was added successfully, redirect to the devices page
+	// TODO: update the devices; page to list all existing devices for the particular user and show the newly added device
+	// c.HTML(http.StatusOK, "devices.html", nil)
 }
 
 // createDevice creates a new device in golioth and returns the device id and psk. Does not save to ribbit db
@@ -269,8 +273,8 @@ func SetupRouter() *gin.Engine {
 	r.DELETE("/users/:email", deleteUser)
 
 	// Golioth API handlers
-	r.POST("/createNewDevice", createNewDevice)
-	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
+	r.POST("/addDevice", createNewDevice)
+	r.POST("/createDeviceGolioth", createDeviceNoDB) // DONOT USE: was used for backend testing
 
 	return r
 }
