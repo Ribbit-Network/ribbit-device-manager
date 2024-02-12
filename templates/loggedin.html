@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Successfully Logged In</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Management</title>
 </head>
 <body>
-<h1><a href="/logout">LOGOUT</a></h1>
+    <h1>Device Management</h1>
+
+    <form action="/addDevice" method="POST">
+        <button type="submit">Add Device</button>
+    </form>
+
+    <form action="/logout" method="POST">
+        <button type="submit">Logout</button>
+    </form>
 </body>
 </html>

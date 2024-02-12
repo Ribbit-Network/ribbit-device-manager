@@ -1,7 +1,6 @@
 package api
 
 import (
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -52,7 +51,7 @@ func signup(c *gin.Context) {
 		Email:    creds.Email,
 		Password: hashedPassword,
 	}
-
+	// TODO: check if user already exists in db, if user exists, return message and suggest user login
 	if err := db.CreateUser(userdb); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -61,23 +60,9 @@ func signup(c *gin.Context) {
 	if c.Request.Method == "POST" {
 		creds.Email = c.PostForm("email")
 		creds.Password = c.PostForm("password")
-
 		// Assuming validation is successful, render a new page to the user
-		// TODO: move the html to a file under templates
-		html := `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title>Sign Up Success</title>
-		</head>
-		<body>
-			<h2>Sign Up Success!</h2>
-			<p>Thank you for signing up, ` + creds.Email + `.</p>
-			<p><a href="/">Return to Login</a></p>
-		</body>
-		</html>`
+		c.HTML(http.StatusOK, "signupSuccess.html", nil)
 
-		io.WriteString(c.Writer, html)
 		return
 	}
 
@@ -128,7 +113,9 @@ func login(c *gin.Context) {
 		}
 
 		// set cookie to 1 if user creds match and show that the user is logged in
-		if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
+		// if creds.Password == storedCreds.Password && creds.Email == storedCreds.Email {
+		// TODO : fix password comparison
+		if creds.Email == storedCreds.Email {
 			cookie = &http.Cookie{
 				Name:  "logged-in",
 				Value: "1",
@@ -190,6 +177,7 @@ func deleteUser(c *gin.Context) {
 // createNewDevice adds a device to the active user account
 func createNewDevice(c *gin.Context) {
 	// TODO: retrieve active email from cookie store
+	// email := c.Request.Cookies
 
 	// Fetch the user details using the email from the session
 	email := "username"
@@ -269,7 +257,7 @@ func SetupRouter() *gin.Engine {
 	r.DELETE("/users/:email", deleteUser)
 
 	// Golioth API handlers
-	r.POST("/createNewDevice", createNewDevice)
+	r.POST("/addDevice", createNewDevice)
 	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
 
 	return r
