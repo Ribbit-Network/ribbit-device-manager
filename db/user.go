@@ -35,8 +35,13 @@ func NewUserRepo(db *gorm.DB) *UserRepo {
 
 // CreateUser will add a single new user to database
 func CreateUser(user User) error {
-	user.ID = uuid.New().String()
-	result := db.Create(&user)
+	userDB := UserDB{
+		ID:        uuid.New().String(),
+		Email:     user.Email,
+		Password:  user.Password,
+		CreatedAt: time.Now(),
+	}
+	result := db.Create(&userDB)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -44,8 +49,8 @@ func CreateUser(user User) error {
 }
 
 // GetAllUsers retrieves a list of all users and their info from the database
-func GetAllUsers() ([]User, error) {
-	var users []User
+func GetAllUsers() ([]UserDB, error) {
+	var users []UserDB
 	result := db.Find(&users)
 	if result.Error != nil {
 		return nil, result.Error
@@ -55,14 +60,14 @@ func GetAllUsers() ([]User, error) {
 
 // DeleteUserByEmail deletes a user from the database identified by email
 func DeleteUserByEmail(email string) error {
-	return db.Delete(&User{}, "email = ?", email).Error
+	return db.Delete(&UserDB{}, "email = ?", email).Error
 }
 
-func GetUserByEmail(email string) (User, error) {
-	var user User
+func GetUserByEmail(email string) (UserDB, error) {
+	var user UserDB
 	result := db.First(&user, "email = ?", email)
 	if result.Error != nil {
-		return User{}, result.Error
+		return UserDB{}, result.Error
 	}
 	return user, nil
 }

@@ -21,7 +21,7 @@ type Repository struct {
 
 // AutoMigrate will automatically migrate the database and correct schema errors on startup
 func AutoMigrate(db *gorm.DB) {
-	db.AutoMigrate(&User{}, &Device{})
+	db.AutoMigrate(&UserDB{}, &DeviceDB{})
 }
 
 func NewRepository(db *gorm.DB) (*Repository, error) {
@@ -49,7 +49,7 @@ func ConnectDatabase() {
 		log.Fatal("Failed to connect to the database:", err)
 	}
 
-	db.AutoMigrate(&User{}, &Device{})
+	db.AutoMigrate(&UserDB{}, &DeviceDB{})
 }
 
 func (r *Repository) Users() *UserRepo {

@@ -223,11 +223,15 @@ func createNewDevice(c *gin.Context) {
 
 	err1 := db.CreateDevice(device)
 	if err1 != nil {
+		//TODO: fix internal server error reporting to the UI. This currently just shows that the webpage doesn't work
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"deviceID": d.DeviceId, "psk": psk.PreSharedKey, "email": email})
+	// if devices was added successfully, redirect to the devices page
+	// TODO: update the devices; page to list all existing devices for the particular user and show the newly added device
+	c.HTML(http.StatusOK, "devices.html", nil)
 }
 
 // createDevice creates a new device in golioth and returns the device id and psk. Does not save to ribbit db
