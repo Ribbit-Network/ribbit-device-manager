@@ -228,10 +228,11 @@ func createNewDevice(c *gin.Context) {
 		return
 	}
 
+	// publish device id and psk to the user
 	c.JSON(http.StatusOK, gin.H{"deviceID": d.DeviceId, "psk": psk.PreSharedKey, "email": email})
 	// if devices was added successfully, redirect to the devices page
 	// TODO: update the devices; page to list all existing devices for the particular user and show the newly added device
-	c.HTML(http.StatusOK, "devices.html", nil)
+	// c.HTML(http.StatusOK, "devices.html", nil)
 }
 
 // createDevice creates a new device in golioth and returns the device id and psk. Does not save to ribbit db
@@ -273,7 +274,7 @@ func SetupRouter() *gin.Engine {
 
 	// Golioth API handlers
 	r.POST("/addDevice", createNewDevice)
-	r.POST("/createDeviceGolioth", createDeviceNoDB) // Used exclusively for testing
+	r.POST("/createDeviceGolioth", createDeviceNoDB) // DONOT USE: was used for backend testing
 
 	return r
 }

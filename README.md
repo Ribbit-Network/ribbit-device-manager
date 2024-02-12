@@ -11,7 +11,7 @@ This section is intended to provide enough information for you to be able to run
 
 ## Getting Started
 To run the app locally, you'll need a MySQL server and you'll need to configure the following three environment variables:
-* "DB_CONN" : Specific to your local db creds
+* "DSN_ENV" : Specific to your local db creds
 * "GOLIOTH_PROJECT_ID" : available in the Golioth user terminal
 * "GOLIOTH_API_KEY": available in the Golioth user terminal
 
@@ -36,6 +36,11 @@ If you are using vscode. Below is a sample json, the provided environment variab
     ]
 }
 ```
+## Browser Access
+Since we don't have a homepage dashboard yet, below are the two webpages that you will need to be able to access all respective functionality. The remaining info will be presented to you on these pages.
+* `localhost:8080/` : signup page
+* `localhost:8080/login` : login page
+
 
 ## Ribbit REST APIs
 The APIs available are listed below and can be accessed by using a separate API tool such as postman.
@@ -47,10 +52,9 @@ The APIs available are listed below and can be accessed by using a separate API 
 * `POST /login/:email/:password` : sign in user assuming the signup is complete 
 * `DELETE /users/:email` : deletes the respective user email
 * `POST /createNewDevice` : creates a device in the golioth system and associates it with the specified user email
-* For developer testing only: `POST /createDeviceGolioth`
-    * It creates a device directly in the golioth account without associating it to a user
 
 ## OPEN ITEMS
-* fix bug where cookie occasionally doesn't update to a value of 1 so that the user login data is tracked in the browser (required for email association on device creation)
-* add `ADD DEVICE` button to the `loggedin.html` page
-* server user a list of golioth devices associated to their user account and present on the UI on the `loggedin.html` page
+* server user a list of golioth devices associated to their user account and present on the UI on the `loggedin.html` and `devices.html` page
+* Improve UX. Make the UI a lot nicer and improve navigation
+* Create an admin user page
+* TODOs throughout the code. There are a few of these
