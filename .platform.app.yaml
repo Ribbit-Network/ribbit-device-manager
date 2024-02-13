@@ -33,15 +33,15 @@ relationships:
 
 hooks:
     build:
-      go build -o cmd/main
+      go build cmd/main.go
 
 web:
   upstream: 
     socket_family: "tcp"
     protocol: "http"
   commands: 
-    start: "./cmd/main"
-  locations: 
+    start: "main"
+  locations:
     '/': 
       allow: false
       passthru: true
