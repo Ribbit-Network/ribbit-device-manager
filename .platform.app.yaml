@@ -35,6 +35,16 @@ hooks:
     build:
       go build cmd/main.go
 
+# These are for testing. We'll want to set these up differently for prod vs testing environments later.
+# Probably DSN_ENV will not work as expected yet.
+variables:
+    env:
+        DSN_ENV: root:password@tcp(127.0.0.1:3306)/ribbit?charset=utf8mb4&parseTime=True&loc=Local
+        GOLIOTH_PROJECT_ID: ribbit-test-569244
+        GOLIOTH_API_KEY: R7aJE5qW4DNHJTgy9JpbmZYrFXnRTY8S
+        SESSION_KEY: abc1234
+
+
 web:
   upstream: 
     socket_family: "tcp"
