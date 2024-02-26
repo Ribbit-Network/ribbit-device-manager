@@ -42,15 +42,13 @@ variables:
         DSN_ENV: root:password@tcp(127.0.0.1:3306)/ribbit?charset=utf8mb4&parseTime=True&loc=Local
         GOLIOTH_PROJECT_ID: ribbit-test-569244
         GOLIOTH_API_KEY: R7aJE5qW4DNHJTgy9JpbmZYrFXnRTY8S
-        SESSION_KEY: abc1234
-
 
 web:
   upstream: 
     socket_family: "tcp"
     protocol: "http"
   commands: 
-    start: "main"
+    start: "cmd/main"
   locations:
     '/': 
       allow: false
